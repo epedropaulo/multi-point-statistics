@@ -2,3 +2,50 @@
 data/*.raw
 data/eas/*.eas
 data/eas/*.dat
+
+# MPSlib temporary files and simulation outputs
+# Parameter files
+mps_*.txt
+mps_*_*.txt
+
+# Training image thread files
+ti_thread_*.dat
+ti_thread_*.dat.gslib
+ti_thread_*.dat_selfInf.dat
+
+# Thread directories
+thread*/
+thread*/
+
+# Simulation output directories
+mps_output/
+mps_archive/
+simulation_*/
+
+# Temporary MPSlib files
+*.gslib
+*.dat_selfInf.dat
+
+# MPSlib specific patterns
+mps_snesim_*
+mps_genesim_*
+
+# Jupyter notebook checkpoints (if any)
+.ipynb_checkpoints/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
