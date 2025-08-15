@@ -2,6 +2,7 @@
 data/*.raw
 data/eas/*.eas
 data/eas/*.dat
+data/eas/*.npy
 
 # MPSlib temporary files and simulation outputs
 # Parameter files
