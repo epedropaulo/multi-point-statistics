@@ -1,8 +1,5 @@
 # Ignore all .raw files in the data/ directory
-data/*.raw
-data/eas/*.eas
-data/eas/*.dat
-data/eas/*.npy
+data/*
 
 # MPSlib temporary files and simulation outputs
 # Parameter files

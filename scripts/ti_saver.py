@@ -2,27 +2,25 @@ import numpy as np
 import os
 import mpslib as mps
 
-def transform_ti(path):
-    di = 2
+def transform_ti(path, downsample_factor=2):
     coarse3d = 1
 
     Deas = mps.eas.read(path)
     TI = Deas['Dmat']
-    
-    TI = Deas['Dmat']
-    if di>1:
+
+    if downsample_factor>1:
         if coarse3d==0:
             Dmat = TI
-            TI = Dmat[::di,::di, :]
+            TI = Dmat[::downsample_factor,::downsample_factor, :]
         else:
             Dmat = TI
-            TI = mps.trainingimages.coarsen_2d_ti(Dmat, di)
+            TI = mps.trainingimages.coarsen_2d_ti(Dmat, downsample_factor)
     
     mps.eas.write_mat(TI, path)
 
     return TI
 
-def save_binary_as_ti_and_npy(binary_data, output_path):
+def save_binary_as_ti_and_npy(binary_data, output_path, downsample_factor=2):
     """
     Save binary data as both .dat (EAS format) and .npy (NumPy array) files
     
@@ -47,7 +45,7 @@ def save_binary_as_ti_and_npy(binary_data, output_path):
     npy_path = output_path + '.npy'
     np.save(npy_path, binary_data[:,:, None])
 
-    binary_data_transformed = transform_ti(dat_path)
+    binary_data_transformed = transform_ti(dat_path, downsample_factor)
     
     print(f"✅ Saved as .dat: {dat_path}")
 
