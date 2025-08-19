@@ -12,8 +12,80 @@ def load_binary_from_eleven_sandstones(path: str) -> np.ndarray:
 
     return unshaped_voxel.reshape((size, size, size))
 
+def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None) -> np.ndarray:
+    """
+    Convert a .npy array to hard data structure format [X, Y, Z, VALUE].
+    
+    Args:
+        npy_path (str): Path to the .npy file
+        threshold (float): Threshold to convert continuous values to binary (default: 0.5)
+        max_points (int): Maximum number of points to return (default: None = all points)
+        
+    Returns:
+        np.ndarray: Hard data array in format [X, Y, Z, VALUE]
+        
+    Example:
+        # Load array and convert to hard data
+        hard_data = npy_to_hard_data('my_array.npy', threshold=0.5, max_points=100)
+        
+        # Use in MPSlib
+        O.d_hard = hard_data
+    """
+    # Load the array
+    array = np.load(npy_path)
+    
+    # Get array dimensions
+    if len(array.shape) == 2:
+        # 2D array - add Z dimension
+        nx, ny = array.shape
+        nz = 1
+        array_3d = array.reshape(nx, ny, nz)
+    elif len(array.shape) == 3:
+        # 3D array
+        nx, ny, nz = array.shape
+        array_3d = array
+    else:
+        raise ValueError(f"Array must be 2D or 3D, got shape {array.shape}")
+    
+    # Create coordinate grids
+    x_coords, y_coords, z_coords = np.meshgrid(
+        np.arange(nx), 
+        np.arange(ny), 
+        np.arange(nz), 
+        indexing='ij'
+    )
+    
+    # Flatten coordinates and values
+    x_flat = x_coords.flatten()
+    y_flat = y_coords.flatten()
+    z_flat = z_coords.flatten()
+    values_flat = array_3d.flatten()
+    
+    # Apply threshold if needed (convert to binary)
+    if threshold is not None:
+        values_flat = (values_flat > threshold).astype(float)
+    
+    # Create hard data array
+    hard_data = np.column_stack([x_flat, y_flat, z_flat, values_flat])
+    
+    # Filter out zero values (optional - comment out if you want all points)
+    # hard_data = hard_data[hard_data[:, 3] != 0]
+    
+    # Limit number of points if specified
+    if max_points is not None and len(hard_data) > max_points:
+        # Randomly sample points
+        indices = np.random.choice(len(hard_data), max_points, replace=False)
+        hard_data = hard_data[indices]
+    
+    print(f"✅ Converted {npy_path} to hard data format")
+    print(f"   Array shape: {array.shape}")
+    print(f"   Hard data points: {len(hard_data)}")
+    print(f"   Value range: [{hard_data[:, 3].min():.2f}, {hard_data[:, 3].max():.2f}]")
+    
+    return hard_data
+
 def plot_realizations_enhanced(O, n_realizations=4, figsize=(15, 10), cmap='viridis', 
-                              title_prefix="Realization", save_path=None, dpi=150):
+                               title_prefix="Realization", save_path=None, dpi=150):
     """
     Enhanced plotting function to replace O.plot_reals() with better visualization.
     
