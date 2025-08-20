@@ -165,8 +165,11 @@ def plot_realizations_enhanced(O, n_realizations=4, figsize=(15, 10), cmap='viri
         # Add grid
         ax.grid(True, alpha=0.3)
         
+        # Calculate porosity (fraction of non-zero values)
+        porosity = np.sum(plot_data > 0) / plot_data.size * 100
+        
         # Add statistics in text box
-        stats_text = f'Min: {plot_data.min():.2f}\nMax: {plot_data.max():.2f}\nMean: {plot_data.mean():.2f}'
+        stats_text = f'Min: {plot_data.min():.2f}\nMax: {plot_data.max():.2f}\nMean: {plot_data.mean():.2f}\nPorosity: {porosity:.1f}%'
         ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=8,
                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
