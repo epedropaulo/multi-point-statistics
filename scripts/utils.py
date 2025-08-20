@@ -12,7 +12,7 @@ def load_binary_from_eleven_sandstones(path: str) -> np.ndarray:
 
     return unshaped_voxel.reshape((size, size, size))
 
-def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None) -> np.ndarray:
+def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None, downsample_factor=1) -> np.ndarray:
     """
     Convert a .npy array to hard data structure format [X, Y, Z, VALUE].
     
@@ -20,13 +20,14 @@ def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None) -> np.ndarra
         npy_path (str): Path to the .npy file
         threshold (float): Threshold to convert continuous values to binary (default: 0.5)
         max_points (int): Maximum number of points to return (default: None = all points)
+        downsample_factor (int): Factor to scale coordinates back to original system (default: 1)
         
     Returns:
         np.ndarray: Hard data array in format [X, Y, Z, VALUE]
         
     Example:
-        # Load array and convert to hard data
-        hard_data = npy_to_hard_data('my_array.npy', threshold=0.5, max_points=100)
+        # Load array and convert to hard data with coordinate scaling
+        hard_data = npy_to_hard_data('my_array.npy', threshold=0.5, downsample_factor=4)
         
         # Use in MPSlib
         O.d_hard = hard_data
@@ -41,9 +42,10 @@ def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None) -> np.ndarra
         nz = 1
         array_3d = array.reshape(nx, ny, nz)
     elif len(array.shape) == 3:
-        # 3D array
-        nx, ny, nz = array.shape
-        array_3d = array
+        # 3D array - use only the first layer of Z axis
+        nx, ny, nz_full = array.shape
+        nz = 1
+        array_3d = array[:, :, 0:1]  # Take only the first Z layer
     else:
         raise ValueError(f"Array must be 2D or 3D, got shape {array.shape}")
     
@@ -60,6 +62,11 @@ def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None) -> np.ndarra
     y_flat = y_coords.flatten()
     z_flat = z_coords.flatten()
     values_flat = array_3d.flatten()
+    
+    # Scale coordinates by downsample factor
+    x_flat = x_flat * downsample_factor
+    y_flat = y_flat * downsample_factor
+    z_flat = z_flat * downsample_factor
     
     # Apply threshold if needed (convert to binary)
     if threshold is not None:
@@ -81,6 +88,8 @@ def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None) -> np.ndarra
     print(f"   Array shape: {array.shape}")
     print(f"   Hard data points: {len(hard_data)}")
     print(f"   Value range: [{hard_data[:, 3].min():.2f}, {hard_data[:, 3].max():.2f}]")
+    print(f"   Coordinate scaling factor: {downsample_factor}")
+    print(f"   Scaled coordinate range: X[0, {hard_data[:, 0].max()}], Y[0, {hard_data[:, 1].max()}], Z[0, {hard_data[:, 2].max()}]")
     
     return hard_data
 
