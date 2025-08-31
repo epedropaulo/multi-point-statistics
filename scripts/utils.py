@@ -5,6 +5,195 @@ from scipy.interpolate import interp1d
 from sklearn.metrics import mean_squared_error
 from scipy.ndimage import zoom
 
+# PyVista compatibility function for deprecated UniformGrid
+def numpy_to_pvgrid_fixed(Data, origin=(0,0,0), spacing=(1,1,1)):
+    """
+    Convert 3D numpy array to pyvista ImageData (replaces deprecated UniformGrid)
+    
+    Args:
+        Data: 3D numpy array
+        origin: origin point (x, y, z)
+        spacing: spacing between grid points (dx, dy, dz)
+        
+    Returns:
+        pyvista.ImageData object
+    """
+    try:
+        import pyvista as pv
+        
+        # Create the spatial reference using ImageData instead of UniformGrid
+        grid = pv.ImageData()
+        
+        # Set the grid dimensions: shape + 1 because we want to inject our values on the CELL data
+        grid.dimensions = np.array(Data.shape) + 1
+        
+        # Edit the spatial reference
+        grid.origin = origin  # The bottom left corner of the data set
+        grid.spacing = spacing  # These are the cell sizes along each axis
+        
+        # Add the data values to the cell data
+        grid.cell_data['values'] = Data.flatten(order='F')  # Flatten the array!
+        
+        return grid
+        
+    except ImportError:
+        print("PyVista is not installed. Install it with: pip install pyvista")
+        return None
+
+def patch_mpslib_plotting():
+    """
+    Patch MPSlib plotting functions to use the fixed PyVista ImageData instead of deprecated UniformGrid.
+    This function should be called before using any MPSlib plotting functions.
+    """
+    try:
+        import mpslib.plot as mps_plot
+        
+        # Replace the deprecated numpy_to_pvgrid function
+        mps_plot.numpy_to_pvgrid = numpy_to_pvgrid_fixed
+        
+        # Also patch the plot_3d_reals function that uses UniformGrid directly
+        def plot_3d_reals_fixed(O, nshow=4, slice=0):
+            '''Plot realizations in in O.sim in 3D using pyvista (fixed version)
+            
+            Paramaters
+            ----------
+            O : mpslib object
+                
+            nshow : int (def=4)
+                show a maxmimum of 'nshow' realizations
+            '''
+            import numpy as np
+            import pyvista as pv
+            
+            if not(hasattr(O,'sim')):
+                print('No data to plot (no "sim" attribute)')
+                return -1
+            if (O.sim is None):
+                print('No data to plot ("sim" attribute i "None")')
+                return -1
+            
+            nr = O.par['n_real']
+            nshow = np.min((nshow,nr))
+            
+            nxy = np.ceil(np.sqrt(nshow)).astype('int')
+            
+            plotter = pv.Plotter(shape=(nxy,nxy))
+
+            i=-1
+            for ix in range(nxy):
+                for iy in range(nxy):
+                    i=i+1
+                    plotter.subplot(iy,ix)
+
+                    Data = O.sim[i]
+                    # Use the fixed function instead of UniformGrid
+                    grid = numpy_to_pvgrid_fixed(Data, origin=O.par['origin'], spacing=O.par['grid_cell_size'])
+
+                    if (slice==0):
+                        plotter.add_mesh(grid.slice_orthogonal())
+                    else:
+                        plotter.add_mesh(grid.slice(normal=[1, 1, 0]))
+                    plotter.add_text('#%d' % (i+1))
+                    
+                    # Configure grid and axes (simplified to avoid kernel crashes)
+                    plotter.show_grid()
+                    
+                    # Set background for better visibility
+                    plotter.set_background('white')
+
+            plotter.show()
+        
+        # Replace the plot_3d_reals function
+        mps_plot.plot_3d_reals = plot_3d_reals_fixed
+        
+        print("✅ MPSlib plotting functions patched to use PyVista ImageData instead of deprecated UniformGrid")
+        
+    except ImportError:
+        print("❌ Could not patch MPSlib plotting - mpslib.plot module not found")
+    except Exception as e:
+        print(f"❌ Error patching MPSlib plotting: {e}")
+
+def plot_3d_realizations_enhanced(O, n_realizations=4, slice_mode='full', 
+                                 cmap='viridis', opacity=1.0, show_edges=False):
+    """
+    Enhanced 3D plotting function for MPSlib realizations using fixed PyVista ImageData.
+    
+    Args:
+        O: MPSlib object containing simulation results
+        n_realizations: Number of realizations to plot (default: 4)
+        slice_mode: 'orthogonal', 'single', or 'full' (default: 'full')
+        cmap: Colormap for visualization (default: 'viridis')
+        opacity: Opacity of the mesh (default: 1.0)
+        show_edges: Whether to show mesh edges (default: False)
+    """
+    try:
+        import pyvista as pv
+        
+        # Get number of available realizations
+        n_available = len(O.sim)
+        n_to_plot = min(n_realizations, n_available)
+        
+        if n_to_plot == 0:
+            print("No realizations found in O.sim")
+            return
+        
+        # Calculate grid layout
+        nxy = int(np.ceil(np.sqrt(n_to_plot)))
+        
+        # Create plotter
+        plotter = pv.Plotter(shape=(nxy, nxy))
+        
+        i = 0
+        for ix in range(nxy):
+            for iy in range(nxy):
+                if i >= n_to_plot:
+                    break
+                    
+                plotter.subplot(iy, ix)
+                
+                # Get realization data
+                Data = O.sim[i]
+                
+                # Create grid using fixed function
+                grid = numpy_to_pvgrid_fixed(
+                    Data, 
+                    origin=O.par.get('origin', (0, 0, 0)), 
+                    spacing=O.par.get('grid_cell_size', (1, 1, 1))
+                )
+                
+                if grid is None:
+                    print(f"❌ Failed to create grid for realization {i}")
+                    continue
+                
+                # Add mesh based on slice mode
+                if slice_mode == 'orthogonal':
+                    mesh = grid.slice_orthogonal()
+                elif slice_mode == 'single':
+                    mesh = grid.slice(normal=[1, 1, 0])
+                elif slice_mode == 'full':
+                    mesh = grid
+                else:
+                    mesh = grid.slice_orthogonal()
+                
+                plotter.add_mesh(mesh, cmap=cmap, opacity=opacity, show_edges=show_edges)
+                plotter.add_text(f'Realization {i+1}', font_size=12)
+                
+                # Configure grid and axes (simplified to avoid kernel crashes)
+                plotter.show_grid()
+                plotter.show_axes()
+                
+                # Set background for better visibility
+                plotter.set_background('white')
+                
+                i += 1
+        
+        plotter.show()
+        
+    except ImportError:
+        print("❌ PyVista is not installed. Install it with: pip install pyvista")
+    except Exception as e:
+        print(f"❌ Error in 3D plotting: {e}")
+
 def load_binary_from_eleven_sandstones(path: str) -> np.ndarray:
     with open(path, 'rb') as f:
         unshaped_voxel = np.fromfile(f, dtype=np.uint8)
@@ -477,3 +666,149 @@ def plot_mse_comparison(
         'average_accuracy': avg_accuracy,
         'realization_results': results
     }
+
+def extract_subcube(cube_3d, subcube_length, cube_index):
+    """
+    Extract a non-overlapping sub-cube from a 3D array.
+    
+    Args:
+        cube_3d (numpy.ndarray): 3D input array
+        subcube_length (int): Length of each side of the sub-cube
+        cube_index (int): Index of the sub-cube to extract (0, 1, 2, 3, ...)
+        
+    Returns:
+        numpy.ndarray: Extracted sub-cube
+        
+    Example:
+        # Extract 4 sub-cubes from a 100x100x100 cube
+        original_cube = np.random.rand(100, 100, 100)
+        
+        # Get the first sub-cube (index 0)
+        subcube_0 = extract_subcube(original_cube, 50, 0)  # Shape: (50, 50, 50)
+        
+        # Get the second sub-cube (index 1) 
+        subcube_1 = extract_subcube(original_cube, 50, 1)  # Shape: (50, 50, 50)
+        
+        # Get the third sub-cube (index 2)
+        subcube_2 = extract_subcube(original_cube, 50, 2)  # Shape: (50, 50, 50)
+        
+        # Get the fourth sub-cube (index 3)
+        subcube_3 = extract_subcube(original_cube, 50, 3)  # Shape: (50, 50, 50)
+    """
+    if len(cube_3d.shape) != 3:
+        raise ValueError(f"Input must be 3D array, got shape {cube_3d.shape}")
+    
+    nx, ny, nz = cube_3d.shape
+    
+    # Calculate how many sub-cubes fit in each dimension
+    n_cubes_x = nx // subcube_length
+    n_cubes_y = ny // subcube_length
+    n_cubes_z = nz // subcube_length
+    
+    # Calculate total number of possible sub-cubes
+    total_cubes = n_cubes_x * n_cubes_y * n_cubes_z
+    
+    if cube_index >= total_cubes:
+        raise ValueError(f"Cube index {cube_index} is out of range. "
+                        f"Only {total_cubes} sub-cubes available "
+                        f"({n_cubes_x}x{n_cubes_y}x{n_cubes_z})")
+    
+    # Calculate the position of the requested sub-cube
+    # Convert linear index to 3D coordinates
+    cube_z = cube_index // (n_cubes_x * n_cubes_y)
+    cube_y = (cube_index % (n_cubes_x * n_cubes_y)) // n_cubes_x
+    cube_x = cube_index % n_cubes_x
+    
+    # Calculate start and end indices for each dimension
+    start_x = cube_x * subcube_length
+    end_x = start_x + subcube_length
+    start_y = cube_y * subcube_length
+    end_y = start_y + subcube_length
+    start_z = cube_z * subcube_length
+    end_z = start_z + subcube_length
+    
+    # Extract the sub-cube
+    subcube = cube_3d[start_x:end_x, start_y:end_y, start_z:end_z]
+    
+    print(f"✅ Extracted sub-cube {cube_index} from 3D array")
+    print(f"   Original shape: {cube_3d.shape}")
+    print(f"   Sub-cube shape: {subcube.shape}")
+    print(f"   Sub-cube position: X[{start_x}:{end_x}], Y[{start_y}:{end_y}], Z[{start_z}:{end_z}]")
+    print(f"   Total available sub-cubes: {total_cubes} ({n_cubes_x}x{n_cubes_y}x{n_cubes_z})")
+    
+    return subcube
+
+
+def get_subcube_info(cube_3d, subcube_length):
+    """
+    Get information about how many sub-cubes can be extracted from a 3D array.
+    
+    Args:
+        cube_3d (numpy.ndarray): 3D input array
+        subcube_length (int): Length of each side of the sub-cube
+        
+    Returns:
+        dict: Information about sub-cube extraction possibilities
+    """
+    if len(cube_3d.shape) != 3:
+        raise ValueError(f"Input must be 3D array, got shape {cube_3d.shape}")
+    
+    nx, ny, nz = cube_3d.shape
+    
+    # Calculate how many sub-cubes fit in each dimension
+    n_cubes_x = nx // subcube_length
+    n_cubes_y = ny // subcube_length
+    n_cubes_z = nz // subcube_length
+    
+    # Calculate total number of possible sub-cubes
+    total_cubes = n_cubes_x * n_cubes_y * n_cubes_z
+    
+    # Calculate remaining space (unused)
+    remaining_x = nx % subcube_length
+    remaining_y = ny % subcube_length
+    remaining_z = nz % subcube_length
+    
+    info = {
+        'original_shape': cube_3d.shape,
+        'subcube_length': subcube_length,
+        'n_cubes_x': n_cubes_x,
+        'n_cubes_y': n_cubes_y,
+        'n_cubes_z': n_cubes_z,
+        'total_cubes': total_cubes,
+        'remaining_x': remaining_x,
+        'remaining_y': remaining_y,
+        'remaining_z': remaining_z,
+        'efficiency': (total_cubes * subcube_length**3) / (nx * ny * nz) * 100
+    }
+    
+    print(f"📊 Sub-cube extraction analysis:")
+    print(f"   Original cube: {nx}×{ny}×{nz}")
+    print(f"   Sub-cube size: {subcube_length}×{subcube_length}×{subcube_length}")
+    print(f"   Available sub-cubes: {total_cubes} ({n_cubes_x}×{n_cubes_y}×{n_cubes_z})")
+    print(f"   Remaining space: X:{remaining_x}, Y:{remaining_y}, Z:{remaining_z}")
+    print(f"   Extraction efficiency: {info['efficiency']:.1f}%")
+    
+    return info
+
+
+def extract_all_subcubes(cube_3d, subcube_length):
+    """
+    Extract all possible non-overlapping sub-cubes from a 3D array.
+    
+    Args:
+        cube_3d (numpy.ndarray): 3D input array
+        subcube_length (int): Length of each side of the sub-cube
+        
+    Returns:
+        list: List of all extracted sub-cubes
+    """
+    info = get_subcube_info(cube_3d, subcube_length)
+    total_cubes = info['total_cubes']
+    
+    subcubes = []
+    for i in range(total_cubes):
+        subcube = extract_subcube(cube_3d, subcube_length, i)
+        subcubes.append(subcube)
+    
+    print(f"✅ Extracted all {total_cubes} sub-cubes")
+    return subcubes
