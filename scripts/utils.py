@@ -204,22 +204,27 @@ def load_binary_from_eleven_sandstones(path: str) -> np.ndarray:
 
     return unshaped_voxel.reshape((size, size, size))
 
-def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None, downsample_factor=1) -> np.ndarray:
+def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None, downsample_factor=1, use_3d=True) -> np.ndarray:
     """
     Convert a .npy array to hard data structure format [X, Y, Z, VALUE].
+    Now supports full 3D data processing.
     
     Args:
         npy_path (str): Path to the .npy file
         threshold (float): Threshold to convert continuous values to binary (default: 0.5)
         max_points (int): Maximum number of points to return (default: None = all points)
         downsample_factor (int): Factor to scale coordinates back to original system (default: 1)
+        use_3d (bool): If True, use all Z layers for 3D arrays. If False, use only first Z layer (default: True)
         
     Returns:
         np.ndarray: Hard data array in format [X, Y, Z, VALUE]
         
     Example:
-        # Load array and convert to hard data with coordinate scaling
-        hard_data = npy_to_hard_data('my_array.npy', threshold=0.5, downsample_factor=4)
+        # Load 3D array and convert to hard data with all Z layers
+        hard_data = npy_to_hard_data('my_3d_array.npy', threshold=0.5, downsample_factor=4, use_3d=True)
+        
+        # Load 3D array but use only first Z layer (2D-like behavior)
+        hard_data_2d = npy_to_hard_data('my_3d_array.npy', threshold=0.5, downsample_factor=4, use_3d=False)
         
         # Use in MPSlib
         O.d_hard = hard_data
@@ -233,11 +238,19 @@ def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None, downsample_f
         nx, ny = array.shape
         nz = 1
         array_3d = array.reshape(nx, ny, nz)
+        print(f"📊 2D array detected, added Z dimension")
     elif len(array.shape) == 3:
-        # 3D array - use only the first layer of Z axis
         nx, ny, nz_full = array.shape
-        nz = 1
-        array_3d = array[:, :, 0:1]  # Take only the first Z layer
+        if use_3d:
+            # 3D array - use all Z layers
+            nz = nz_full
+            array_3d = array  # Use the full 3D array
+            print(f"📊 3D array detected, using all {nz} Z layers")
+        else:
+            # 3D array - use only the first layer of Z axis (legacy behavior)
+            nz = 1
+            array_3d = array[:, :, 0:1]  # Take only the first Z layer
+            print(f"📊 3D array detected, using only first Z layer (2D mode)")
     else:
         raise ValueError(f"Array must be 2D or 3D, got shape {array.shape}")
     
@@ -277,7 +290,8 @@ def npy_to_hard_data(npy_path: str, threshold=0.5, max_points=None, downsample_f
         hard_data = hard_data[indices]
     
     print(f"✅ Converted {npy_path} to hard data format")
-    print(f"   Array shape: {array.shape}")
+    print(f"   Original array shape: {array.shape}")
+    print(f"   Processed array shape: {array_3d.shape}")
     print(f"   Hard data points: {len(hard_data)}")
     print(f"   Value range: [{hard_data[:, 3].min():.2f}, {hard_data[:, 3].max():.2f}]")
     print(f"   Coordinate scaling factor: {downsample_factor}")
