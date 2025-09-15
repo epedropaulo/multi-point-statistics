@@ -4,6 +4,7 @@ import matplotlib.gridspec as gridspec
 from scipy.interpolate import interp1d
 from sklearn.metrics import mean_squared_error
 from scipy.ndimage import zoom
+import os
 
 # Import patches from the patches archive
 from .patches import (
@@ -727,3 +728,25 @@ def extract_all_subcubes(cube_3d, subcube_length):
     
     print(f"✅ Extracted all {total_cubes} sub-cubes")
     return subcubes
+
+
+def save_simulations_to_npy(O, folder):
+    """
+    Save all simulations from O.reals as .npy files into a given folder.
+
+    Parameters
+    ----------
+    O : mpslib.mpslib
+        An MPS simulation object with O.reals containing NumPy arrays.
+    folder : str
+        Path to the output directory. Will be created if it doesn't exist.
+    """
+    # Ensure output folder exists
+    os.makedirs(folder, exist_ok=True)
+
+    # Loop through each realization and save as .npy
+    for i, sim in enumerate(O.sim):
+        filename = os.path.join(folder, f"sim{i:03d}.npy")
+        np.save(filename, sim)
+
+    print(f"✔ Saved {len(O.sim)} realizations to '{folder}'")
