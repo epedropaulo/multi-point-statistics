@@ -5,113 +5,14 @@ from scipy.interpolate import interp1d
 from sklearn.metrics import mean_squared_error
 from scipy.ndimage import zoom
 
-# PyVista compatibility function for deprecated UniformGrid
-def numpy_to_pvgrid_fixed(Data, origin=(0,0,0), spacing=(1,1,1)):
-    """
-    Convert 3D numpy array to pyvista ImageData (replaces deprecated UniformGrid)
-    
-    Args:
-        Data: 3D numpy array
-        origin: origin point (x, y, z)
-        spacing: spacing between grid points (dx, dy, dz)
-        
-    Returns:
-        pyvista.ImageData object
-    """
-    try:
-        import pyvista as pv
-        
-        # Create the spatial reference using ImageData instead of UniformGrid
-        grid = pv.ImageData()
-        
-        # Set the grid dimensions: shape + 1 because we want to inject our values on the CELL data
-        grid.dimensions = np.array(Data.shape) + 1
-        
-        # Edit the spatial reference
-        grid.origin = origin  # The bottom left corner of the data set
-        grid.spacing = spacing  # These are the cell sizes along each axis
-        
-        # Add the data values to the cell data
-        grid.cell_data['values'] = Data.flatten(order='F')  # Flatten the array!
-        
-        return grid
-        
-    except ImportError:
-        print("PyVista is not installed. Install it with: pip install pyvista")
-        return None
-
-def patch_mpslib_plotting():
-    """
-    Patch MPSlib plotting functions to use the fixed PyVista ImageData instead of deprecated UniformGrid.
-    This function should be called before using any MPSlib plotting functions.
-    """
-    try:
-        import mpslib.plot as mps_plot
-        
-        # Replace the deprecated numpy_to_pvgrid function
-        mps_plot.numpy_to_pvgrid = numpy_to_pvgrid_fixed
-        
-        # Also patch the plot_3d_reals function that uses UniformGrid directly
-        def plot_3d_reals_fixed(O, nshow=4, slice=0):
-            '''Plot realizations in in O.sim in 3D using pyvista (fixed version)
-            
-            Paramaters
-            ----------
-            O : mpslib object
-                
-            nshow : int (def=4)
-                show a maxmimum of 'nshow' realizations
-            '''
-            import numpy as np
-            import pyvista as pv
-            
-            if not(hasattr(O,'sim')):
-                print('No data to plot (no "sim" attribute)')
-                return -1
-            if (O.sim is None):
-                print('No data to plot ("sim" attribute i "None")')
-                return -1
-            
-            nr = O.par['n_real']
-            nshow = np.min((nshow,nr))
-            
-            nxy = np.ceil(np.sqrt(nshow)).astype('int')
-            
-            plotter = pv.Plotter(shape=(nxy,nxy))
-
-            i=-1
-            for ix in range(nxy):
-                for iy in range(nxy):
-                    i=i+1
-                    plotter.subplot(iy,ix)
-
-                    Data = O.sim[i]
-                    # Use the fixed function instead of UniformGrid
-                    grid = numpy_to_pvgrid_fixed(Data, origin=O.par['origin'], spacing=O.par['grid_cell_size'])
-
-                    if (slice==0):
-                        plotter.add_mesh(grid.slice_orthogonal())
-                    else:
-                        plotter.add_mesh(grid.slice(normal=[1, 1, 0]))
-                    plotter.add_text('#%d' % (i+1))
-                    
-                    # Configure grid and axes (simplified to avoid kernel crashes)
-                    plotter.show_grid()
-                    
-                    # Set background for better visibility
-                    plotter.set_background('white')
-
-            plotter.show()
-        
-        # Replace the plot_3d_reals function
-        mps_plot.plot_3d_reals = plot_3d_reals_fixed
-        
-        print("✅ MPSlib plotting functions patched to use PyVista ImageData instead of deprecated UniformGrid")
-        
-    except ImportError:
-        print("❌ Could not patch MPSlib plotting - mpslib.plot module not found")
-    except Exception as e:
-        print(f"❌ Error patching MPSlib plotting: {e}")
+# Import patches from the patches archive
+from .patches import (
+    numpy_to_pvgrid_fixed,
+    patch_mpslib_plotting,
+    apply_all_pyvista_patches,
+    patch_mpslib_numpy,
+    apply_all_numpy_patches
+)
 
 def plot_3d_realizations_enhanced(O, n_realizations=4, slice_mode='full', 
                                  cmap='viridis', opacity=1.0, show_edges=False):
